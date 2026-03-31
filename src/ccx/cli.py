@@ -53,8 +53,8 @@ def main(ctx: click.Context, model: str | None, api_key: str | None) -> None:
     ctx.obj["api_key"] = api_key
 
     if ctx.invoked_subcommand is None:
-        # Default: launch TUI
-        asyncio.run(_launch_tui(model, api_key))
+        # Default: launch TUI using Textual's own runner (not asyncio.run)
+        _launch_tui_sync(model, api_key)
 
 
 @main.command()
@@ -75,8 +75,8 @@ def version() -> None:
     click.echo(f"Python {sys.version}")
 
 
-async def _launch_tui(model: str | None, api_key: str | None) -> None:
-    """Launch the Textual TUI."""
+def _launch_tui_sync(model: str | None, api_key: str | None) -> None:
+    """Launch the Textual TUI using Textual's own event loop."""
     from ccx.api.client import ClaudeClient
     from ccx.config.claudemd import ClaudeMdDiscovery
     from ccx.config.settings import Settings
@@ -86,6 +86,10 @@ async def _launch_tui(model: str | None, api_key: str | None) -> None:
     settings = Settings.load()
     effective_key = api_key or settings.api_key
     effective_model = model or settings.model
+
+    if not effective_key:
+        click.echo("Error: ANTHROPIC_API_KEY not set. Pass --api-key or set the env var.", err=True)
+        sys.exit(1)
 
     context = SessionContext(
         model=effective_model,
@@ -98,14 +102,11 @@ async def _launch_tui(model: str | None, api_key: str | None) -> None:
     if instructions:
         context.system_prompt = instructions
 
-    client = ClaudeClient(api_key=effective_key, model=effective_model) if effective_key else None
+    client = ClaudeClient(api_key=effective_key, model=effective_model)
     registry = _setup_registry()
 
     app = CcxApp(client=client, registry=registry, context=context)
-    await app.run_async()
-
-    if client:
-        await client.close()
+    app.run()  # Textual manages its own event loop
 
 
 async def _oneshot(prompt: str, model: str, api_key: str | None) -> None:
