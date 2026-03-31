@@ -1,0 +1,50 @@
+Screen {
+    layout: vertical;
+}
+
+#chat-display {
+    height: 1fr;
+    border: solid $accent;
+    overflow-y: auto;
+    padding: 0 1;
+}
+
+#user-input {
+    dock: bottom;
+    height: 3;
+    border: solid $primary;
+    padding: 0 1;
+}
+
+#status-bar {
+    dock: bottom;
+    height: 1;
+    background: $surface;
+    color: $text-muted;
+    padding: 0 1;
+}
+
+.tool-output {
+    color: $text-muted;
+    margin: 0 2;
+}
+
+.error-text {
+    color: $error;
+}
+
+.thinking-text {
+    color: $warning;
+    text-style: italic;
+}
+
+.user-message {
+    background: $surface;
+    margin: 1 0;
+    padding: 0 1;
+}
+
+.assistant-message {
+    margin: 1 0;
+    padding: 0 1;
+}
