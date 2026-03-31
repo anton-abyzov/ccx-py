@@ -53,10 +53,10 @@ class CcxApp(App[None]):
         **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
-        self._client = client
-        self._registry = registry or ToolRegistry()
-        self._context = context or SessionContext()
-        self._engine: QueryEngine | None = None
+        self._api_client = client
+        self._tools = registry or ToolRegistry()
+        self._session = context or SessionContext()
+        self._query_engine: QueryEngine | None = None
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -67,13 +67,13 @@ class CcxApp(App[None]):
 
     def on_mount(self) -> None:
         chat = self.query_one(ChatDisplay)
-        chat.add_system(f"ccx-py v0.1.0 | model: {self._context.model}")
+        chat.add_system(f"ccx-py v0.1.0 | model: {self._session.model}")
         chat.add_system("Type a message to start. Ctrl+C to quit.")
 
-        if self._client:
-            self._engine = QueryEngine(
-                client=self._client,
-                registry=self._registry,
+        if self._api_client:
+            self._query_engine = QueryEngine(
+                client=self._api_client,
+                registry=self._tools,
                 context=self._context,
                 on_text=lambda t: chat.add_assistant_text(t),
                 on_thinking=lambda t: chat.add_thinking(t),
@@ -88,18 +88,18 @@ class CcxApp(App[None]):
         status = self.query_one(StatusBar)
 
         chat.add_user_message(text)
-        self._context.add_user_message(text)
+        self._session.add_user_message(text)
 
-        if not self._engine:
+        if not self._query_engine:
             chat.add_system("No API client configured. Set ANTHROPIC_API_KEY.")
             return
 
         try:
-            await self._engine.run()
+            await self._query_engine.run()
         except Exception as e:
             chat.add_system(f"Error: {e}")
 
-        status.update_status(self._context.model, self._context.token_count)
+        status.update_status(self._session.model, self._session.token_count)
 
     def action_clear(self) -> None:
         chat = self.query_one(ChatDisplay)
