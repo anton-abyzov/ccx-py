@@ -13,14 +13,18 @@ from ccx import __version__
 
 def _setup_registry() -> object:
     """Create and populate the default tool registry."""
+    from ccx.tools.agent_tool import AgentTool
     from ccx.tools.bash import BashTool
     from ccx.tools.file_edit import FileEditTool
     from ccx.tools.file_read import FileReadTool
     from ccx.tools.file_write import FileWriteTool
     from ccx.tools.glob_tool import GlobTool
     from ccx.tools.grep import GrepTool
+    from ccx.tools.notebook_edit import NotebookEditTool
     from ccx.tools.registry import ToolRegistry
+    from ccx.tools.todo_write import TodoWriteTool
     from ccx.tools.web_fetch import WebFetchTool
+    from ccx.tools.web_search import WebSearchTool
 
     registry = ToolRegistry()
     registry.register(BashTool())
@@ -30,6 +34,10 @@ def _setup_registry() -> object:
     registry.register(GlobTool())
     registry.register(GrepTool())
     registry.register(WebFetchTool())
+    registry.register(AgentTool())
+    registry.register(WebSearchTool())
+    registry.register(TodoWriteTool())
+    registry.register(NotebookEditTool())
     return registry
 
 
@@ -116,10 +124,22 @@ async def _oneshot(prompt: str, model: str, api_key: str | None) -> None:
         console.print("[red]Error: ANTHROPIC_API_KEY not set[/red]")
         sys.exit(1)
 
+    from ccx.config.claudemd import ClaudeMdDiscovery
+    from ccx.core.prompt import build_system_prompt
+
     context = SessionContext(model=model)
     context.add_user_message(prompt)
 
     registry = _setup_registry()
+
+    # Build system prompt with tools and CLAUDE.md
+    discovery = ClaudeMdDiscovery()
+    claude_md = discovery.load_merged()
+    context.system_prompt = build_system_prompt(
+        tools=registry.list_tools(),
+        working_dir=context.working_dir,
+        claude_md=claude_md,
+    )
 
     async with ClaudeClient(api_key=api_key, model=model) as client:
         engine = QueryEngine(

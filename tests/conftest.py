@@ -8,12 +8,16 @@ import pytest
 
 from ccx.tools.base import ToolContext
 from ccx.tools.registry import ToolRegistry
+from ccx.tools.agent_tool import AgentTool
 from ccx.tools.bash import BashTool
 from ccx.tools.file_read import FileReadTool
 from ccx.tools.file_write import FileWriteTool
 from ccx.tools.file_edit import FileEditTool
 from ccx.tools.glob_tool import GlobTool
 from ccx.tools.grep import GrepTool
+from ccx.tools.notebook_edit import NotebookEditTool
+from ccx.tools.todo_write import TodoWriteTool
+from ccx.tools.web_search import WebSearchTool
 
 
 @pytest.fixture
@@ -38,4 +42,8 @@ def registry() -> ToolRegistry:
     reg.register(FileEditTool())
     reg.register(GlobTool())
     reg.register(GrepTool())
+    reg.register(AgentTool())
+    reg.register(WebSearchTool())
+    reg.register(TodoWriteTool())
+    reg.register(NotebookEditTool())
     return reg
