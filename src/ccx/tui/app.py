@@ -81,7 +81,7 @@ class CcxApp(App[None]):
                 on_tool_result=lambda n, o, e: chat.add_tool_result(n, o, e),
             )
 
-    async def on_user_input_submitted(self, event: UserInput.Submitted) -> None:
+    async def on_user_input_user_submitted(self, event: UserInput.UserSubmitted) -> None:
         """Handle user message submission."""
         text = event.value
         chat = self.query_one(ChatDisplay)

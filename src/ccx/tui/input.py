@@ -19,8 +19,8 @@ class UserInput(Input):
     }
     """
 
-    class Submitted(Message):
-        """Emitted when user presses Enter."""
+    class UserSubmitted(Message):
+        """Emitted when user presses Enter with non-empty text."""
 
         def __init__(self, value: str) -> None:
             self.value = value
@@ -38,5 +38,5 @@ class UserInput(Input):
         """Handle Enter key press."""
         text = event.value.strip()
         if text:
-            self.post_message(UserInput.Submitted(text))
+            self.post_message(UserInput.UserSubmitted(text))
             self.value = ""
