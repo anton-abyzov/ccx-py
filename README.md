@@ -4,9 +4,7 @@ Python implementation of an AI coding assistant CLI, part of the [CCX project](h
 
 ## Background
 
-On March 31, 2026, security researcher Chaofan Shou published a tweet revealing that Anthropic's Claude Code CLI tool contained its entire system prompt in plaintext within the npm package. The leaked ~100KB prompt exposed the complete architecture: tool definitions, permission models, agent spawning, context compaction, MCP integration, and more.
-
-CCX (Claude Code eXtended) is a collection of clean-room implementations across multiple languages, built from the architectural insights in the leaked prompt. This repository is the Python implementation.
+CCX (Claude Code eXtended) is a family of clean-room AI coding assistant implementations, built as open-source alternatives to proprietary tools. Each implementation is designed from the ground up using publicly documented API specifications and common patterns in AI-assisted development. This repository is the Python implementation.
 
 ## How is this different from claw-code (instructkr/claude-code)?
 
