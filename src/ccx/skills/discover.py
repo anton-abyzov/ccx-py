@@ -49,8 +49,30 @@ def _scan_dir(d: Path, skills: dict[str, str]) -> None:
                     skills[name] = desc
 
 
+def _derive_name(path: Path) -> str | None:
+    """Derive skill name from file path.
+
+    plugins/specweave/skills/team-lead/SKILL.md → sw:team-lead
+    plugins/other-plugin/skills/foo/SKILL.md → other-plugin:foo
+    ~/.claude/skills/nanobanana/SKILL.md → nanobanana
+    ~/.claude/skills/greeting.md → greeting
+    """
+    skill_name = path.parent.name if path.name == "SKILL.md" else path.stem
+    if not skill_name:
+        return None
+
+    parts = path.parts
+    try:
+        plugins_idx = parts.index("plugins")
+        plugin_name = parts[plugins_idx + 1]
+        prefix = "sw" if plugin_name == "specweave" else plugin_name
+        return f"{prefix}:{skill_name}"
+    except (ValueError, IndexError):
+        return skill_name
+
+
 def _parse_frontmatter(path: Path) -> tuple[str | None, str]:
-    """Extract name and description from YAML frontmatter."""
+    """Extract description from YAML frontmatter, derive name from path."""
     try:
         content = path.read_text(encoding="utf-8")
     except OSError:
@@ -70,9 +92,9 @@ def _parse_frontmatter(path: Path) -> tuple[str | None, str]:
     except yaml.YAMLError:
         return None, ""
 
-    name = fm.get("name")
+    name = _derive_name(path)
     if not name:
         return None, ""
 
     desc = fm.get("description", name)
-    return str(name), str(desc)
+    return name, str(desc)

@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from ccx.skills.discover import _parse_frontmatter, _scan_dir, discover_all_skills
+from ccx.skills.discover import _derive_name, _parse_frontmatter, _scan_dir, discover_all_skills
 
 
 @pytest.fixture
@@ -22,7 +22,7 @@ def skill_tree(tmp_path: Path) -> Path:
     sub = d / "debug-helper"
     sub.mkdir()
     (sub / "SKILL.md").write_text(
-        "---\nname: sw:debug\ndescription: Debug helper skill\n---\nHelp debug.\n"
+        "---\ndescription: Debug helper skill\n---\nHelp debug.\n"
     )
 
     # File without frontmatter (should be skipped)
@@ -37,12 +37,30 @@ def skill_tree(tmp_path: Path) -> Path:
     return d
 
 
+class TestDeriveName:
+    def test_flat_md_file(self, tmp_path: Path):
+        p = tmp_path / "greeting.md"
+        assert _derive_name(p) == "greeting"
+
+    def test_skill_md_in_subdir(self, tmp_path: Path):
+        p = tmp_path / "skills" / "debug-helper" / "SKILL.md"
+        assert _derive_name(p) == "debug-helper"
+
+    def test_specweave_plugin_prefix(self, tmp_path: Path):
+        p = tmp_path / "plugins" / "specweave" / "skills" / "team-lead" / "SKILL.md"
+        assert _derive_name(p) == "sw:team-lead"
+
+    def test_other_plugin_prefix(self, tmp_path: Path):
+        p = tmp_path / "plugins" / "frontend-design" / "skills" / "ui" / "SKILL.md"
+        assert _derive_name(p) == "frontend-design:ui"
+
+
 class TestParseFrontmatter:
     def test_valid(self, tmp_path: Path):
         p = tmp_path / "skill.md"
-        p.write_text("---\nname: test\ndescription: A test skill\n---\nbody\n")
+        p.write_text("---\ndescription: A test skill\n---\nbody\n")
         name, desc = _parse_frontmatter(p)
-        assert name == "test"
+        assert name == "skill"
         assert desc == "A test skill"
 
     def test_no_frontmatter(self, tmp_path: Path):
@@ -57,15 +75,16 @@ class TestParseFrontmatter:
         name, desc = _parse_frontmatter(p)
         assert name is None
 
-    def test_no_name_field(self, tmp_path: Path):
+    def test_name_from_path_not_frontmatter(self, tmp_path: Path):
         p = tmp_path / "noname.md"
         p.write_text("---\ndescription: orphan\n---\ncontent\n")
         name, desc = _parse_frontmatter(p)
-        assert name is None
+        assert name == "noname"
+        assert desc == "orphan"
 
     def test_description_defaults_to_name(self, tmp_path: Path):
         p = tmp_path / "minimal.md"
-        p.write_text("---\nname: minimal\n---\ncontent\n")
+        p.write_text("---\ntag: whatever\n---\ncontent\n")
         name, desc = _parse_frontmatter(p)
         assert name == "minimal"
         assert desc == "minimal"
@@ -92,7 +111,7 @@ class TestScanDir:
     def test_finds_subdir_skills(self, skill_tree: Path):
         skills: dict[str, str] = {}
         _scan_dir(skill_tree, skills)
-        assert "sw:debug" in skills
+        assert "debug-helper" in skills
 
     def test_skips_no_frontmatter(self, skill_tree: Path):
         skills: dict[str, str] = {}
@@ -118,7 +137,7 @@ class TestDiscoverAllSkills:
         skill_dir = tmp_path / ".claude" / "skills"
         skill_dir.mkdir(parents=True)
         (skill_dir / "my-skill.md").write_text(
-            "---\nname: my-skill\ndescription: My custom skill\n---\ncontent\n"
+            "---\ndescription: My custom skill\n---\ncontent\n"
         )
         monkeypatch.setattr(Path, "home", lambda: tmp_path)
         monkeypatch.chdir(tmp_path)
@@ -130,9 +149,9 @@ class TestDiscoverAllSkills:
         skill_dir = tmp_path / ".claude" / "skills"
         skill_dir.mkdir(parents=True)
         (skill_dir / "local.md").write_text(
-            "---\nname: local-skill\ndescription: Project skill\n---\ncontent\n"
+            "---\ndescription: Project skill\n---\ncontent\n"
         )
         monkeypatch.setattr(Path, "home", lambda: tmp_path / "fakehome")
         monkeypatch.chdir(tmp_path)
         result = discover_all_skills()
-        assert "local-skill" in result
+        assert "local" in result
