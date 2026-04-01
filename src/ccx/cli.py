@@ -45,16 +45,19 @@ def _setup_registry() -> object:
 @click.version_option(__version__, prog_name="ccx-py")
 @click.option("--model", "-m", default=None, help="Model to use.")
 @click.option("--api-key", envvar="ANTHROPIC_API_KEY", default=None, help="API key.")
+@click.option("--tui", is_flag=True, default=False, help="Launch full-screen Textual TUI.")
 @click.pass_context
-def main(ctx: click.Context, model: str | None, api_key: str | None) -> None:
+def main(ctx: click.Context, model: str | None, api_key: str | None, tui: bool) -> None:
     """CCX Python - AI coding assistant CLI."""
     ctx.ensure_object(dict)
     ctx.obj["model"] = model
     ctx.obj["api_key"] = api_key
 
     if ctx.invoked_subcommand is None:
-        # Default: launch TUI using Textual's own runner (not asyncio.run)
-        _launch_tui_sync(model, api_key)
+        if tui:
+            _launch_tui_sync(model, api_key)
+        else:
+            ctx.invoke(chat)
 
 
 @main.command()
@@ -73,6 +76,109 @@ def version() -> None:
     """Show version info."""
     click.echo(f"ccx-py {__version__}")
     click.echo(f"Python {sys.version}")
+
+
+@main.command()
+@click.option("--model", "-m", default=None, help="Model override.")
+@click.pass_context
+def chat(ctx: click.Context, model: str | None) -> None:
+    """Interactive chat with slash command autocomplete."""
+    from ccx.tui.inline_render import (
+        render_separator,
+        render_user_message,
+        render_welcome,
+    )
+    from ccx.tui.prompt import SLASH_COMMANDS, create_session
+
+    api_key = ctx.obj.get("api_key")
+    model = model or ctx.obj.get("model") or "claude-sonnet-4-6"
+
+    if not api_key:
+        click.echo("Error: ANTHROPIC_API_KEY not set", err=True)
+        sys.exit(1)
+
+    registry = _setup_registry()
+    render_welcome(model, "API Key", str(Path.cwd()), len(registry.list_tools()))
+
+    session = create_session()
+
+    while True:
+        try:
+            text = session.prompt()
+            text = text.strip()
+            if not text:
+                continue
+
+            if text == "/exit":
+                break
+            if text == "/help":
+                for cmd, desc in SLASH_COMMANDS.items():
+                    click.echo(f"  {cmd:12s} {desc}")
+                continue
+            if text == "/clear":
+                click.clear()
+                continue
+            if text == "/version":
+                click.echo(f"ccx-py {__version__}")
+                continue
+            if text == "/tools":
+                for tool in registry.list_tools():
+                    click.echo(f"  {tool.name}")
+                continue
+            if text == "/model":
+                click.echo(f"  Model: {model}")
+                continue
+            if text.startswith("/"):
+                click.echo(f"Unknown command: {text}. Type /help for available commands.")
+                continue
+
+            render_user_message(text)
+            # Stream response from Claude
+            asyncio.run(_chat_turn(text, model, api_key, registry))
+            render_separator()
+        except (KeyboardInterrupt, EOFError):
+            break
+
+
+async def _chat_turn(
+    prompt: str, model: str, api_key: str, registry: object
+) -> None:
+    """Run a single chat turn with streaming output."""
+    from rich.console import Console
+    from rich.markdown import Markdown
+
+    from ccx.api.client import ClaudeClient
+    from ccx.api.types import TextContent
+    from ccx.config.claudemd import ClaudeMdDiscovery
+    from ccx.core.context import SessionContext
+    from ccx.core.prompt import build_system_prompt
+    from ccx.core.query import QueryEngine
+
+    console = Console()
+
+    context = SessionContext(model=model)
+    context.add_user_message(prompt)
+
+    discovery = ClaudeMdDiscovery()
+    claude_md = discovery.load_merged()
+    context.system_prompt = build_system_prompt(
+        tools=registry.list_tools(),
+        working_dir=context.working_dir,
+        claude_md=claude_md,
+    )
+
+    async with ClaudeClient(api_key=api_key, model=model) as client:
+        engine = QueryEngine(
+            client=client,
+            registry=registry,
+            context=context,
+            on_text=lambda t: None,
+        )
+        content_blocks = await engine.run()
+
+    for block in content_blocks:
+        if isinstance(block, TextContent):
+            console.print(Markdown(block.text))
 
 
 def _launch_tui_sync(model: str | None, api_key: str | None) -> None:
