@@ -41,7 +41,7 @@ def render_assistant_text(text: str) -> None:
 
 def render_tool_start(name: str, detail: str) -> None:
     """Display a tool invocation indicator."""
-    console.print(f"[green]*[/] [bold]{name}[/]([dim]{detail}[/])")
+    console.print(f"  [green]●[/] [bold]{name}[/]([dim]{detail}[/])")
 
 
 def render_tool_output(name: str, output: str, is_error: bool = False) -> None:

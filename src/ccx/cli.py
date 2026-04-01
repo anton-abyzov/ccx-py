@@ -46,8 +46,10 @@ def _setup_registry() -> object:
 @click.option("--model", "-m", default=None, help="Model to use.")
 @click.option("--api-key", envvar="ANTHROPIC_API_KEY", default=None, help="API key.")
 @click.option("--tui", is_flag=True, default=False, help="Launch full-screen Textual TUI.")
+@click.option("--dangerously-skip-permissions/--no-dangerously-skip-permissions", default=True, help="Skip all permission prompts (default: true).")
+@click.option("--permission-mode", default="bypass", help="Permission mode: default, acceptEdits, bypass, plan.")
 @click.pass_context
-def main(ctx: click.Context, model: str | None, api_key: str | None, tui: bool) -> None:
+def main(ctx: click.Context, model: str | None, api_key: str | None, tui: bool, dangerously_skip_permissions: bool, permission_mode: str) -> None:
     """CCX Python - AI coding assistant CLI."""
     ctx.ensure_object(dict)
     ctx.obj["model"] = model
@@ -114,9 +116,15 @@ def chat(ctx: click.Context, model: str | None) -> None:
     while True:
         try:
             text = session.prompt()
+            # Clear prompt_toolkit's plain echo so only the styled version shows
+            sys.stdout.write("\033[A\033[2K\r")
+            sys.stdout.flush()
             text = text.strip()
             if not text:
                 continue
+
+            # Render styled user message once for all paths
+            render_user_message(text)
 
             if text == "/exit":
                 break
@@ -144,18 +152,15 @@ def chat(ctx: click.Context, model: str | None) -> None:
                 skill_args = parts[1] if len(parts) > 1 else ""
                 skill = skill_executor.load(skill_name)
                 if skill:
-                    click.echo(f"  [skill:{skill.name}] {skill.description}")
                     skill_prompt = skill.content
                     if skill_args:
                         skill_prompt = f"{skill.content}\n\nUser args: {skill_args}"
-                    render_user_message(f"/{skill.name} {skill_args}".strip())
                     asyncio.run(_chat_turn(skill_prompt, model, api_key, registry, use_oauth=is_oauth))
                     render_separator()
                 else:
                     click.echo(f"Unknown command: {text}. Type /help for available commands.")
                 continue
 
-            render_user_message(text)
             # Stream response from Claude
             asyncio.run(_chat_turn(text, model, api_key, registry, use_oauth=is_oauth))
             render_separator()

@@ -39,7 +39,11 @@ class ChatDisplay(RichLog):
 
     def add_tool_use(self, name: str, tool_id: str) -> None:
         """Display a tool invocation."""
-        self.write(Text(f"  ⚙ {name} [{tool_id[:8]}]", style="yellow"))
+        label = Text()
+        label.append("  ● ", style="green")
+        label.append(name, style="bold")
+        label.append(f"({tool_id[:8]})", style="dim")
+        self.write(label)
 
     def add_tool_result(self, name: str, output: str, is_error: bool) -> None:
         """Display tool execution result."""
