@@ -46,5 +46,7 @@ def test_environment_section():
 def test_tools_listed():
     tools = [BashTool(), FileReadTool()]
     prompt = build_system_prompt(tools=tools)
-    assert "**bash**" in prompt
-    assert "**file_read**" in prompt
+    assert "## bash" in prompt
+    assert "## file_read" in prompt
+    assert "Input Schema:" in prompt
+    assert "```json" in prompt

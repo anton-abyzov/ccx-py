@@ -32,6 +32,11 @@ def render_user_message(text: str) -> None:
     console.print(f"[bold on grey23] > {text} [/]")
 
 
+def render_thinking(text: str) -> None:
+    """Display thinking/reasoning text in dim italic."""
+    console.print(f"[dim italic]{text}[/dim italic]", end="")
+
+
 def render_assistant_text(text: str) -> None:
     """Display assistant response text."""
     from rich.markdown import Markdown

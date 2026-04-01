@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from collections.abc import AsyncIterator
 
 import httpx
@@ -12,6 +13,15 @@ from ccx.api.types import (
     StreamEvent,
     StreamEventType,
 )
+
+_THINK_RE = re.compile(r"<think>(.*?)</think>", re.DOTALL)
+
+
+def extract_thinking(text: str) -> tuple[str, str]:
+    """Extract <think> blocks from text. Returns (clean_text, thinking)."""
+    thinking_parts = _THINK_RE.findall(text)
+    clean = _THINK_RE.sub("", text)
+    return clean, "\n".join(thinking_parts)
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
@@ -66,6 +76,7 @@ class OpenAIClient:
 
             started = False
             text_started = False
+            thinking_started = False
             block_idx = 0
             active_tools: dict[int, int] = {}  # openai tool idx -> block idx
 
@@ -79,6 +90,11 @@ class OpenAIClient:
                 data = line[6:]  # strip "data: "
                 if data == "[DONE]":
                     if started:
+                        if thinking_started:
+                            yield StreamEvent(
+                                type=StreamEventType.CONTENT_BLOCK_STOP,
+                                index=block_idx,
+                            )
                         if text_started:
                             yield StreamEvent(
                                 type=StreamEventType.CONTENT_BLOCK_STOP,
@@ -124,21 +140,77 @@ class OpenAIClient:
                 delta = choice.get("delta", {})
                 finish_reason = choice.get("finish_reason")
 
-                # Text content
-                content = delta.get("content", "")
-                if content:
-                    if not text_started:
-                        text_started = True
+                # Reasoning content (OpenRouter DeepSeek R1 etc.)
+                reasoning = delta.get("reasoning_content") or delta.get("reasoning", "")
+                if reasoning:
+                    if not thinking_started:
+                        thinking_started = True
+                        # Close text block if open before starting thinking
+                        if text_started:
+                            yield StreamEvent(
+                                type=StreamEventType.CONTENT_BLOCK_STOP,
+                                index=block_idx,
+                            )
+                            block_idx += 1
+                            text_started = False
                         yield StreamEvent(
                             type=StreamEventType.CONTENT_BLOCK_START,
                             index=block_idx,
-                            content_block={"type": "text"},
+                            content_block={"type": "thinking"},
                         )
                     yield StreamEvent(
                         type=StreamEventType.CONTENT_BLOCK_DELTA,
                         index=block_idx,
-                        delta={"type": "text_delta", "text": content},
+                        delta={"type": "thinking_delta", "thinking": reasoning},
                     )
+
+                # Text content
+                content = delta.get("content", "")
+                if content:
+                    # Close thinking block if open before starting text
+                    if thinking_started:
+                        yield StreamEvent(
+                            type=StreamEventType.CONTENT_BLOCK_STOP,
+                            index=block_idx,
+                        )
+                        block_idx += 1
+                        thinking_started = False
+
+                    # Check for <think> tags in text
+                    clean, thinking_text = extract_thinking(content)
+
+                    if thinking_text:
+                        # Emit thinking block for extracted tags
+                        yield StreamEvent(
+                            type=StreamEventType.CONTENT_BLOCK_START,
+                            index=block_idx,
+                            content_block={"type": "thinking"},
+                        )
+                        yield StreamEvent(
+                            type=StreamEventType.CONTENT_BLOCK_DELTA,
+                            index=block_idx,
+                            delta={"type": "thinking_delta", "thinking": thinking_text},
+                        )
+                        yield StreamEvent(
+                            type=StreamEventType.CONTENT_BLOCK_STOP,
+                            index=block_idx,
+                        )
+                        block_idx += 1
+                        content = clean
+
+                    if content:
+                        if not text_started:
+                            text_started = True
+                            yield StreamEvent(
+                                type=StreamEventType.CONTENT_BLOCK_START,
+                                index=block_idx,
+                                content_block={"type": "text"},
+                            )
+                        yield StreamEvent(
+                            type=StreamEventType.CONTENT_BLOCK_DELTA,
+                            index=block_idx,
+                            delta={"type": "text_delta", "text": content},
+                        )
 
                 # Tool calls
                 for tc in delta.get("tool_calls", []):
@@ -174,6 +246,12 @@ class OpenAIClient:
 
                 # Finish reason
                 if finish_reason:
+                    if thinking_started:
+                        yield StreamEvent(
+                            type=StreamEventType.CONTENT_BLOCK_STOP,
+                            index=block_idx,
+                        )
+                        thinking_started = False
                     if text_started:
                         yield StreamEvent(
                             type=StreamEventType.CONTENT_BLOCK_STOP,
@@ -201,7 +279,7 @@ class OpenAIClient:
 
     async def send_message(self, request: object) -> object:
         """Send a non-streaming message request."""
-        from ccx.api.types import MessageResponse, Role, StopReason, TextContent, ToolUseContent, Usage
+        from ccx.api.types import MessageResponse, Role, StopReason, TextContent, ThinkingContent, ToolUseContent, Usage
 
         payload = _convert_request(request, self.model, self.max_tokens)
         payload["stream"] = False
@@ -219,8 +297,19 @@ class OpenAIClient:
         if choices:
             choice = choices[0]
             msg = choice.get("message", {})
+            # Reasoning content (OpenRouter DeepSeek R1 etc.)
+            reasoning = msg.get("reasoning_content") or msg.get("reasoning", "")
+            if reasoning:
+                content.append(ThinkingContent(thinking=reasoning))
             if msg.get("content"):
-                content.append(TextContent(text=msg["content"]))
+                text = msg["content"]
+                clean, thinking_text = extract_thinking(text)
+                if thinking_text:
+                    content.append(ThinkingContent(thinking=thinking_text))
+                if clean:
+                    content.append(TextContent(text=clean))
+            elif not reasoning:
+                pass  # no text content
             for tc in msg.get("tool_calls", []):
                 fn = tc.get("function", {})
                 try:

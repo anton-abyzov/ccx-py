@@ -34,8 +34,8 @@ class ChatDisplay(RichLog):
             self.write(Text(text))
 
     def add_thinking(self, text: str) -> None:
-        """Display thinking/reasoning text."""
-        self.write(Text(f"  💭 {text}", style="dim italic"))
+        """Display thinking/reasoning text in dim italic."""
+        self.write(Text(f"  {text}", style="dim italic"))
 
     def add_tool_use(self, name: str, tool_id: str) -> None:
         """Display a tool invocation."""

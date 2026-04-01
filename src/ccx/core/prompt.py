@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import platform
 from pathlib import Path
@@ -67,7 +68,9 @@ def _tools_section(tools: list[Tool]) -> str:
 
     lines = ["# Available Tools"]
     for tool in tools:
-        lines.append(f"- **{tool.name}**: {tool.description}")
+        lines.append(f"\n## {tool.name}")
+        lines.append(tool.description)
+        lines.append(f"\nInput Schema:\n```json\n{json.dumps(tool.input_schema, indent=2)}\n```")
     return "\n".join(lines)
 
 

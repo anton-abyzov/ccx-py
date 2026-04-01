@@ -21,6 +21,10 @@ SLASH_COMMANDS: dict[str, str] = {
     "/version": "Show version info",
     "/tools": "List available tools",
     "/login": "Log in with Claude OAuth",
+    "/init": "Initialize project (.claude/ directory with defaults)",
+    "/config": "Show current configuration",
+    "/status": "Show session status (model, tokens, tools)",
+    "/doctor": "Run diagnostics (API key, connection, tools)",
 }
 
 

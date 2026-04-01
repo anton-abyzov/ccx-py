@@ -216,6 +216,18 @@ def chat(ctx: click.Context, model: str | None) -> None:
                 from ccx.config.oauth import run_oauth_login
                 run_oauth_login()
                 continue
+            if text == "/init":
+                _handle_init()
+                continue
+            if text == "/config":
+                _handle_config(model, provider, perm_mode)
+                continue
+            if text == "/status":
+                _handle_status(model, registry)
+                continue
+            if text == "/doctor":
+                _handle_doctor(api_key, provider, registry)
+                continue
             if text.startswith("/"):
                 parts = text[1:].split(" ", 1)
                 skill_name = parts[0]
@@ -235,6 +247,67 @@ def chat(ctx: click.Context, model: str | None) -> None:
             render_separator()
         except (KeyboardInterrupt, EOFError):
             break
+
+
+def _handle_init() -> None:
+    """Create .claude/ directory with default settings.json if it doesn't exist."""
+    import json as _json
+
+    claude_dir = Path.cwd() / ".claude"
+    settings_file = claude_dir / "settings.json"
+    if settings_file.exists():
+        click.echo(f"  Already initialized: {settings_file}")
+        return
+    claude_dir.mkdir(parents=True, exist_ok=True)
+    defaults = {
+        "permissions": {"mode": "default", "allow": []},
+        "customInstructions": "",
+    }
+    settings_file.write_text(_json.dumps(defaults, indent=2) + "\n")
+    click.echo(f"  Created {settings_file}")
+
+
+def _handle_config(model: str, provider: str, permission_mode: str) -> None:
+    """Print current configuration."""
+    click.echo(f"  Model:           {model}")
+    click.echo(f"  Provider:        {provider}")
+    click.echo(f"  Permission mode: {permission_mode}")
+    click.echo(f"  Working dir:     {Path.cwd()}")
+
+
+def _handle_status(model: str, registry: object) -> None:
+    """Print session status."""
+    click.echo(f"  Model:       {model}")
+    click.echo(f"  Tools:       {len(registry.list_tools())}")
+    click.echo(f"  Working dir: {Path.cwd()}")
+
+
+def _handle_doctor(api_key: str, provider: str, registry: object) -> None:
+    """Run basic diagnostics."""
+    import os as _os
+
+    # API key check
+    if provider == "openrouter":
+        key = api_key or _os.environ.get("OPENROUTER_API_KEY", "")
+        label = "OPENROUTER_API_KEY"
+    else:
+        key = api_key or _os.environ.get("ANTHROPIC_API_KEY", "")
+        label = "ANTHROPIC_API_KEY"
+
+    if key:
+        click.echo(f"  {label}: set ({key[:8]}...)")
+    else:
+        click.echo(f"  {label}: NOT SET")
+
+    # Tools check
+    tool_count = len(registry.list_tools())
+    click.echo(f"  Tools loaded: {tool_count}")
+    if tool_count == 0:
+        click.echo("  WARNING: No tools registered")
+
+    # Python version
+    click.echo(f"  Python: {sys.version.split()[0]}")
+    click.echo(f"  Provider: {provider}")
 
 
 def _make_client(provider: str, api_key: str, model: str, *, use_oauth: bool = False) -> object:
@@ -259,7 +332,7 @@ async def _chat_turn(
     from ccx.core.prompt import build_system_prompt
     from ccx.core.query import QueryEngine
     from ccx.permissions.modes import PermissionMode
-    from ccx.tui.inline_render import render_tool_output, render_tool_start
+    from ccx.tui.inline_render import render_thinking, render_tool_output, render_tool_start
 
     console = Console()
     effective_mode = permission_mode or PermissionMode.BYPASS
@@ -283,6 +356,7 @@ async def _chat_turn(
             context=context,
             permission_mode=effective_mode,
             on_text=lambda t: None,
+            on_thinking=lambda t: render_thinking(t),
             on_tool_use=lambda name, tid, inp: render_tool_start(name, _summarize_tool_input(name, inp)),
             on_tool_result=lambda name, output, is_err: render_tool_output(name, output, is_err),
         )
@@ -362,6 +436,7 @@ async def _oneshot(prompt: str, model: str, api_key: str | None, permission_mode
 
     from ccx.config.claudemd import ClaudeMdDiscovery
     from ccx.core.prompt import build_system_prompt
+    from ccx.tui.inline_render import render_thinking
 
     context = SessionContext(model=model)
     context.add_user_message(prompt)
@@ -384,6 +459,7 @@ async def _oneshot(prompt: str, model: str, api_key: str | None, permission_mode
             context=context,
             permission_mode=effective_mode,
             on_text=lambda t: None,
+            on_thinking=lambda t: render_thinking(t),
             on_tool_use=lambda name, tid, inp: render_tool_start(name, _summarize_tool_input(name, inp)),
             on_tool_result=lambda name, output, is_err: render_tool_output(name, output, is_err),
         )
