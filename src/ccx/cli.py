@@ -11,6 +11,25 @@ import click
 from ccx import __version__
 
 
+def _summarize_tool_input(name: str, inp: dict) -> str:
+    """Create a short display string for tool input args."""
+    if name == "bash":
+        return inp.get("command", "")[:80]
+    if name in ("file_read", "file_write", "file_edit"):
+        return inp.get("file_path", "")
+    if name == "glob":
+        return inp.get("pattern", "")
+    if name == "grep":
+        return inp.get("pattern", "")
+    if name == "web_fetch":
+        return inp.get("url", "")[:80]
+    # Generic: show first string value
+    for v in inp.values():
+        if isinstance(v, str):
+            return v[:60]
+    return ""
+
+
 def _setup_registry() -> object:
     """Create and populate the default tool registry."""
     from ccx.tools.agent_tool import AgentTool
@@ -41,6 +60,18 @@ def _setup_registry() -> object:
     return registry
 
 
+def _resolve_permission_mode(dangerously_skip_permissions: bool, permission_mode: str) -> str:
+    """Resolve effective permission mode from CLI flags."""
+    from ccx.permissions.modes import PermissionMode
+
+    if dangerously_skip_permissions:
+        return PermissionMode.BYPASS
+    try:
+        return PermissionMode(permission_mode)
+    except ValueError:
+        return PermissionMode.BYPASS
+
+
 @click.group(invoke_without_command=True)
 @click.version_option(__version__, prog_name="ccx-py")
 @click.option("--model", "-m", default=None, help="Model to use.")
@@ -54,6 +85,7 @@ def main(ctx: click.Context, model: str | None, api_key: str | None, tui: bool, 
     ctx.ensure_object(dict)
     ctx.obj["model"] = model
     ctx.obj["api_key"] = api_key
+    ctx.obj["permission_mode"] = _resolve_permission_mode(dangerously_skip_permissions, permission_mode)
 
     if ctx.invoked_subcommand is None:
         if tui:
@@ -70,7 +102,8 @@ def ask(ctx: click.Context, prompt: str, model: str | None) -> None:
     """Send a one-shot prompt (non-interactive)."""
     api_key = ctx.obj.get("api_key")
     model = model or ctx.obj.get("model") or "claude-sonnet-4-6"
-    asyncio.run(_oneshot(prompt, model, api_key))
+    perm_mode = ctx.obj.get("permission_mode")
+    asyncio.run(_oneshot(prompt, model, api_key, permission_mode=perm_mode))
 
 
 @main.command()
@@ -93,6 +126,8 @@ def chat(ctx: click.Context, model: str | None) -> None:
         render_welcome,
     )
     from ccx.tui.prompt import SLASH_COMMANDS, create_session
+
+    perm_mode = ctx.obj.get("permission_mode")
 
     explicit_key = ctx.obj.get("api_key")
     model = model or ctx.obj.get("model") or "claude-sonnet-4-6"
@@ -155,21 +190,21 @@ def chat(ctx: click.Context, model: str | None) -> None:
                     skill_prompt = skill.content
                     if skill_args:
                         skill_prompt = f"{skill.content}\n\nUser args: {skill_args}"
-                    asyncio.run(_chat_turn(skill_prompt, model, api_key, registry, use_oauth=is_oauth))
+                    asyncio.run(_chat_turn(skill_prompt, model, api_key, registry, use_oauth=is_oauth, permission_mode=perm_mode))
                     render_separator()
                 else:
                     click.echo(f"Unknown command: {text}. Type /help for available commands.")
                 continue
 
             # Stream response from Claude
-            asyncio.run(_chat_turn(text, model, api_key, registry, use_oauth=is_oauth))
+            asyncio.run(_chat_turn(text, model, api_key, registry, use_oauth=is_oauth, permission_mode=perm_mode))
             render_separator()
         except (KeyboardInterrupt, EOFError):
             break
 
 
 async def _chat_turn(
-    prompt: str, model: str, api_key: str, registry: object, *, use_oauth: bool = False
+    prompt: str, model: str, api_key: str, registry: object, *, use_oauth: bool = False, permission_mode=None
 ) -> None:
     """Run a single chat turn with streaming output."""
     from rich.console import Console
@@ -181,8 +216,11 @@ async def _chat_turn(
     from ccx.core.context import SessionContext
     from ccx.core.prompt import build_system_prompt
     from ccx.core.query import QueryEngine
+    from ccx.permissions.modes import PermissionMode
+    from ccx.tui.inline_render import render_tool_output, render_tool_start
 
     console = Console()
+    effective_mode = permission_mode or PermissionMode.BYPASS
 
     context = SessionContext(model=model)
     context.add_user_message(prompt)
@@ -200,7 +238,10 @@ async def _chat_turn(
             client=client,
             registry=registry,
             context=context,
+            permission_mode=effective_mode,
             on_text=lambda t: None,
+            on_tool_use=lambda name, tid, inp: render_tool_start(name, _summarize_tool_input(name, inp)),
+            on_tool_result=lambda name, output, is_err: render_tool_output(name, output, is_err),
         )
         content_blocks = await engine.run()
 
@@ -249,7 +290,7 @@ def _launch_tui_sync(model: str | None, api_key: str | None) -> None:
     app.run()  # Textual manages its own event loop
 
 
-async def _oneshot(prompt: str, model: str, api_key: str | None) -> None:
+async def _oneshot(prompt: str, model: str, api_key: str | None, permission_mode=None) -> None:
     """Run a single prompt and print the result."""
     from rich.console import Console
     from rich.markdown import Markdown
@@ -259,8 +300,11 @@ async def _oneshot(prompt: str, model: str, api_key: str | None) -> None:
     from ccx.config.auth import resolve_auth
     from ccx.core.context import SessionContext
     from ccx.core.query import QueryEngine
+    from ccx.permissions.modes import PermissionMode
+    from ccx.tui.inline_render import render_tool_output, render_tool_start
 
     console = Console()
+    effective_mode = permission_mode or PermissionMode.BYPASS
 
     # Resolve auth: explicit key → env var → keychain → credentials file
     if api_key:
@@ -294,7 +338,10 @@ async def _oneshot(prompt: str, model: str, api_key: str | None) -> None:
             client=client,
             registry=registry,
             context=context,
+            permission_mode=effective_mode,
             on_text=lambda t: None,
+            on_tool_use=lambda name, tid, inp: render_tool_start(name, _summarize_tool_input(name, inp)),
+            on_tool_result=lambda name, output, is_err: render_tool_output(name, output, is_err),
         )
         content_blocks = await engine.run()
 
