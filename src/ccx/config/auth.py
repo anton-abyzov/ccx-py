@@ -25,14 +25,20 @@ def resolve_auth() -> tuple[str, bool, str]:
 
     # 2. macOS Keychain
     if sys.platform == "darwin":
-        token, sub = _read_keychain()
+        token, sub, email = _read_keychain()
         if token:
-            return token, True, f"Claude {sub}"
+            display = f"Claude {sub}"
+            if email:
+                display = f"Claude {sub} ({email})"
+            return token, True, display
 
     # 3. Credentials file fallback
-    token, sub = _read_credentials_file()
+    token, sub, email = _read_credentials_file()
     if token:
-        return token, True, f"Claude {sub}"
+        display = f"Claude {sub}"
+        if email:
+            display = f"Claude {sub} ({email})"
+        return token, True, display
 
     raise RuntimeError(
         "No authentication found.\n\n"
@@ -40,12 +46,12 @@ def resolve_auth() -> tuple[str, bool, str]:
     )
 
 
-def _read_keychain() -> tuple[str, str]:
+def _read_keychain() -> tuple[str, str, str]:
     """Read OAuth token from macOS Keychain."""
     try:
         user = os.environ.get("USER", "")
         if not user:
-            return "", ""
+            return "", "", ""
         result = subprocess.run(
             [
                 "security",
@@ -62,10 +68,10 @@ def _read_keychain() -> tuple[str, str]:
             return _parse_oauth_json(result.stdout.strip())
     except (OSError, subprocess.TimeoutExpired):
         pass
-    return "", ""
+    return "", "", ""
 
 
-def _read_credentials_file() -> tuple[str, str]:
+def _read_credentials_file() -> tuple[str, str, str]:
     """Read OAuth token from ~/.claude/.credentials.json."""
     creds_path = Path.home() / ".claude" / ".credentials.json"
     try:
@@ -73,17 +79,18 @@ def _read_credentials_file() -> tuple[str, str]:
             return _parse_oauth_json(creds_path.read_text())
     except (OSError, PermissionError):
         pass
-    return "", ""
+    return "", "", ""
 
 
-def _parse_oauth_json(raw: str) -> tuple[str, str]:
-    """Extract access token and subscription type from credentials JSON."""
+def _parse_oauth_json(raw: str) -> tuple[str, str, str]:
+    """Extract access token, subscription type, and email from credentials JSON."""
     try:
         data = json.loads(raw)
         token = data.get("claudeAiOauth", {}).get("accessToken", "")
         if not token:
-            return "", ""
+            return "", "", ""
         sub_type = data.get("claudeAiSubscriptionType", "Pro")
-        return token, sub_type.title()
+        email = data.get("email", "")
+        return token, sub_type.title(), email
     except (json.JSONDecodeError, AttributeError):
-        return "", ""
+        return "", "", ""
