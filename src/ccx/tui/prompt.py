@@ -9,6 +9,8 @@ from prompt_toolkit.completion import Completer, Completion
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.styles import Style
 
+from ccx.skills.discover import discover_all_skills
+
 SLASH_COMMANDS: dict[str, str] = {
     "/help": "Show available commands",
     "/exit": "Quit the session",
@@ -22,19 +24,37 @@ SLASH_COMMANDS: dict[str, str] = {
 
 
 class SlashCompleter(Completer):
-    """Autocomplete slash commands with descriptions."""
+    """Autocomplete slash commands and discovered skills."""
+
+    def __init__(self) -> None:
+        self.builtin = SLASH_COMMANDS
+        self.skills = discover_all_skills()
 
     def get_completions(self, document, complete_event):
         text = document.text_before_cursor
-        if text.startswith("/"):
-            for cmd, desc in SLASH_COMMANDS.items():
-                if cmd.startswith(text):
-                    yield Completion(
-                        cmd,
-                        start_position=-len(text),
-                        display=cmd,
-                        display_meta=desc,
-                    )
+        if not text.startswith("/"):
+            return
+
+        # Built-in commands first
+        for cmd, desc in self.builtin.items():
+            if cmd.startswith(text):
+                yield Completion(
+                    cmd,
+                    start_position=-len(text),
+                    display=cmd,
+                    display_meta=desc,
+                )
+
+        # Then discovered skills
+        for name, desc in self.skills.items():
+            cmd = f"/{name}"
+            if cmd.startswith(text):
+                yield Completion(
+                    cmd,
+                    start_position=-len(text),
+                    display=cmd,
+                    display_meta=desc[:50],
+                )
 
 
 def create_session() -> PromptSession:

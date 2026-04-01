@@ -83,6 +83,7 @@ def version() -> None:
 @click.pass_context
 def chat(ctx: click.Context, model: str | None) -> None:
     """Interactive chat with slash command autocomplete."""
+    from ccx.skills.loader import SkillLoader
     from ccx.tui.inline_render import (
         render_separator,
         render_user_message,
@@ -98,6 +99,7 @@ def chat(ctx: click.Context, model: str | None) -> None:
         sys.exit(1)
 
     registry = _setup_registry()
+    skill_executor = SkillLoader()
     render_welcome(model, "API Key", str(Path.cwd()), len(registry.list_tools()))
 
     session = create_session()
@@ -129,7 +131,21 @@ def chat(ctx: click.Context, model: str | None) -> None:
                 click.echo(f"  Model: {model}")
                 continue
             if text.startswith("/"):
-                click.echo(f"Unknown command: {text}. Type /help for available commands.")
+                # Try as a skill invocation
+                parts = text[1:].split(" ", 1)
+                skill_name = parts[0]
+                skill_args = parts[1] if len(parts) > 1 else ""
+                skill = skill_executor.load(skill_name)
+                if skill:
+                    click.echo(f"  [skill:{skill.name}] {skill.description}")
+                    skill_prompt = skill.content
+                    if skill_args:
+                        skill_prompt = f"{skill.content}\n\nUser args: {skill_args}"
+                    render_user_message(f"/{skill.name} {skill_args}".strip())
+                    asyncio.run(_chat_turn(skill_prompt, model, api_key, registry))
+                    render_separator()
+                else:
+                    click.echo(f"Unknown command: {text}. Type /help for available commands.")
                 continue
 
             render_user_message(text)
