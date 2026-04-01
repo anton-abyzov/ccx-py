@@ -38,18 +38,28 @@ class ClaudeClient:
         model: str = "claude-sonnet-4-6",
         base_url: str = MESSAGES_URL,
         max_tokens: int = 8192,
+        *,
+        use_oauth: bool = False,
     ) -> None:
         self.api_key = api_key or os.environ.get("ANTHROPIC_API_KEY", "")
         self.model = model
         self.base_url = base_url
         self.max_tokens = max_tokens
+        self.use_oauth = use_oauth
+
+        headers: dict[str, str] = {
+            "anthropic-version": API_VERSION,
+            "content-type": "application/json",
+        }
+        if use_oauth:
+            headers["authorization"] = f"Bearer {self.api_key}"
+            headers["anthropic-beta"] = "oauth-2025-04-20"
+        else:
+            headers["x-api-key"] = self.api_key
+
         self._client = httpx.AsyncClient(
             timeout=httpx.Timeout(connect=10.0, read=300.0, write=10.0, pool=10.0),
-            headers={
-                "anthropic-version": API_VERSION,
-                "x-api-key": self.api_key,
-                "content-type": "application/json",
-            },
+            headers=headers,
         )
 
     async def close(self) -> None:

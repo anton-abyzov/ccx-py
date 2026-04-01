@@ -83,6 +83,7 @@ def version() -> None:
 @click.pass_context
 def chat(ctx: click.Context, model: str | None) -> None:
     """Interactive chat with slash command autocomplete."""
+    from ccx.config.auth import resolve_auth
     from ccx.skills.loader import SkillLoader
     from ccx.tui.inline_render import (
         render_separator,
@@ -91,16 +92,22 @@ def chat(ctx: click.Context, model: str | None) -> None:
     )
     from ccx.tui.prompt import SLASH_COMMANDS, create_session
 
-    api_key = ctx.obj.get("api_key")
+    explicit_key = ctx.obj.get("api_key")
     model = model or ctx.obj.get("model") or "claude-sonnet-4-6"
 
-    if not api_key:
-        click.echo("Error: ANTHROPIC_API_KEY not set", err=True)
-        sys.exit(1)
+    # Resolve auth: --api-key flag → env var → keychain → credentials file
+    if explicit_key:
+        api_key, is_oauth, auth_display = explicit_key, False, "API Key"
+    else:
+        try:
+            api_key, is_oauth, auth_display = resolve_auth()
+        except RuntimeError as e:
+            click.echo(f"Error: {e}", err=True)
+            sys.exit(1)
 
     registry = _setup_registry()
     skill_executor = SkillLoader()
-    render_welcome(model, "API Key", str(Path.cwd()), len(registry.list_tools()))
+    render_welcome(model, auth_display, str(Path.cwd()), len(registry.list_tools()))
 
     session = create_session()
 
@@ -142,7 +149,7 @@ def chat(ctx: click.Context, model: str | None) -> None:
                     if skill_args:
                         skill_prompt = f"{skill.content}\n\nUser args: {skill_args}"
                     render_user_message(f"/{skill.name} {skill_args}".strip())
-                    asyncio.run(_chat_turn(skill_prompt, model, api_key, registry))
+                    asyncio.run(_chat_turn(skill_prompt, model, api_key, registry, use_oauth=is_oauth))
                     render_separator()
                 else:
                     click.echo(f"Unknown command: {text}. Type /help for available commands.")
@@ -150,14 +157,14 @@ def chat(ctx: click.Context, model: str | None) -> None:
 
             render_user_message(text)
             # Stream response from Claude
-            asyncio.run(_chat_turn(text, model, api_key, registry))
+            asyncio.run(_chat_turn(text, model, api_key, registry, use_oauth=is_oauth))
             render_separator()
         except (KeyboardInterrupt, EOFError):
             break
 
 
 async def _chat_turn(
-    prompt: str, model: str, api_key: str, registry: object
+    prompt: str, model: str, api_key: str, registry: object, *, use_oauth: bool = False
 ) -> None:
     """Run a single chat turn with streaming output."""
     from rich.console import Console
@@ -183,7 +190,7 @@ async def _chat_turn(
         claude_md=claude_md,
     )
 
-    async with ClaudeClient(api_key=api_key, model=model) as client:
+    async with ClaudeClient(api_key=api_key, model=model, use_oauth=use_oauth) as client:
         engine = QueryEngine(
             client=client,
             registry=registry,
@@ -200,18 +207,24 @@ async def _chat_turn(
 def _launch_tui_sync(model: str | None, api_key: str | None) -> None:
     """Launch the Textual TUI using Textual's own event loop."""
     from ccx.api.client import ClaudeClient
+    from ccx.config.auth import resolve_auth
     from ccx.config.claudemd import ClaudeMdDiscovery
     from ccx.config.settings import Settings
     from ccx.core.context import SessionContext
     from ccx.tui.app import CcxApp
 
     settings = Settings.load()
-    effective_key = api_key or settings.api_key
     effective_model = model or settings.model
 
-    if not effective_key:
-        click.echo("Error: ANTHROPIC_API_KEY not set. Pass --api-key or set the env var.", err=True)
-        sys.exit(1)
+    # Resolve auth: explicit key → env var → keychain → credentials file
+    if api_key:
+        effective_key, is_oauth = api_key, False
+    else:
+        try:
+            effective_key, is_oauth, _ = resolve_auth()
+        except RuntimeError as e:
+            click.echo(f"Error: {e}", err=True)
+            sys.exit(1)
 
     context = SessionContext(
         model=effective_model,
@@ -224,7 +237,7 @@ def _launch_tui_sync(model: str | None, api_key: str | None) -> None:
     if instructions:
         context.system_prompt = instructions
 
-    client = ClaudeClient(api_key=effective_key, model=effective_model)
+    client = ClaudeClient(api_key=effective_key, model=effective_model, use_oauth=is_oauth)
     registry = _setup_registry()
 
     app = CcxApp(client=client, registry=registry, context=context)
@@ -238,14 +251,21 @@ async def _oneshot(prompt: str, model: str, api_key: str | None) -> None:
 
     from ccx.api.client import ClaudeClient
     from ccx.api.types import TextContent
+    from ccx.config.auth import resolve_auth
     from ccx.core.context import SessionContext
     from ccx.core.query import QueryEngine
 
     console = Console()
 
-    if not api_key:
-        console.print("[red]Error: ANTHROPIC_API_KEY not set[/red]")
-        sys.exit(1)
+    # Resolve auth: explicit key → env var → keychain → credentials file
+    if api_key:
+        effective_key, is_oauth = api_key, False
+    else:
+        try:
+            effective_key, is_oauth, _ = resolve_auth()
+        except RuntimeError as e:
+            console.print(f"[red]Error: {e}[/red]")
+            sys.exit(1)
 
     from ccx.config.claudemd import ClaudeMdDiscovery
     from ccx.core.prompt import build_system_prompt
@@ -264,7 +284,7 @@ async def _oneshot(prompt: str, model: str, api_key: str | None) -> None:
         claude_md=claude_md,
     )
 
-    async with ClaudeClient(api_key=api_key, model=model) as client:
+    async with ClaudeClient(api_key=effective_key, model=model, use_oauth=is_oauth) as client:
         engine = QueryEngine(
             client=client,
             registry=registry,
