@@ -40,7 +40,14 @@ def _setup_registry() -> object:
     from ccx.tools.glob_tool import GlobTool
     from ccx.tools.grep import GrepTool
     from ccx.tools.notebook_edit import NotebookEditTool
+    from ccx.tools.plan_mode import EnterPlanModeTool, ExitPlanModeTool
     from ccx.tools.registry import ToolRegistry
+    from ccx.tools.send_message import SendMessageTool
+    from ccx.tools.task_create import TaskCreateTool
+    from ccx.tools.task_list import TaskListTool
+    from ccx.tools.task_update import TaskUpdateTool
+    from ccx.tools.team_create import TeamCreateTool
+    from ccx.tools.team_delete import TeamDeleteTool
     from ccx.tools.todo_write import TodoWriteTool
     from ccx.tools.web_fetch import WebFetchTool
     from ccx.tools.web_search import WebSearchTool
@@ -57,6 +64,14 @@ def _setup_registry() -> object:
     registry.register(WebSearchTool())
     registry.register(TodoWriteTool())
     registry.register(NotebookEditTool())
+    registry.register(TeamCreateTool())
+    registry.register(TeamDeleteTool())
+    registry.register(SendMessageTool())
+    registry.register(TaskCreateTool())
+    registry.register(TaskUpdateTool())
+    registry.register(TaskListTool())
+    registry.register(EnterPlanModeTool())
+    registry.register(ExitPlanModeTool())
     return registry
 
 
