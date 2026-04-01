@@ -30,7 +30,8 @@ OnThinking = Callable[[str], Any]
 OnToolUse = Callable[[str, str, dict[str, Any]], Any]
 OnToolResult = Callable[[str, str, bool], Any]
 
-MAX_TOOL_LOOPS = 50
+MAX_TOOL_LOOPS = 200
+MAX_AGENT_TOOL_LOOPS = 100
 
 
 class QueryEngine:
@@ -46,11 +47,13 @@ class QueryEngine:
         on_thinking: OnThinking | None = None,
         on_tool_use: OnToolUse | None = None,
         on_tool_result: OnToolResult | None = None,
+        max_loops: int | None = None,
     ) -> None:
         self.client = client
         self.registry = registry
         self.context = context
         self.permission_mode = permission_mode
+        self.max_loops = max_loops or MAX_TOOL_LOOPS
         self._classifier = PermissionClassifier()
         self._on_text = on_text
         self._on_thinking = on_thinking
@@ -61,7 +64,7 @@ class QueryEngine:
         """Run the agentic loop until the model stops requesting tools."""
         all_content: list[ContentBlock] = []
 
-        for _ in range(MAX_TOOL_LOOPS):
+        for _ in range(self.max_loops):
             request = MessageRequest(
                 model=self.context.model,
                 max_tokens=self.context.max_tokens,

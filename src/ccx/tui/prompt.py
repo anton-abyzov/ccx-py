@@ -20,6 +20,7 @@ SLASH_COMMANDS: dict[str, str] = {
     "/compact": "Compress conversation context",
     "/version": "Show version info",
     "/tools": "List available tools",
+    "/login": "Log in with Claude OAuth",
 }
 
 

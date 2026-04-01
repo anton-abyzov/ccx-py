@@ -180,6 +180,10 @@ def chat(ctx: click.Context, model: str | None) -> None:
             if text == "/model":
                 click.echo(f"  Model: {model}")
                 continue
+            if text == "/login":
+                from ccx.config.oauth import run_oauth_login
+                run_oauth_login()
+                continue
             if text.startswith("/"):
                 # Try as a skill invocation
                 parts = text[1:].split(" ", 1)
