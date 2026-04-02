@@ -1,10 +1,10 @@
 # ccx-py
 
-AI coding assistant CLI in Python. Textual TUI + prompt_toolkit autocomplete. 11 tools. Built on httpx async streaming with Pydantic v2 types.
+AI coding assistant CLI in Python, part of the [CCX (Community Code Extended)](https://github.com/anton-abyzov/ccx) project. Textual TUI + prompt_toolkit autocomplete. 11 tools. Built on httpx async streaming with Pydantic v2 types.
 
 ## Why CCX?
 
-CCX is a family of clean-room AI coding assistant implementations, built as open-source alternatives to proprietary tools. Each implementation is designed from the ground up using publicly documented API specifications and common patterns in AI-assisted development.
+CCX (Community Code Extended) is a custom AI coding assistant built from the ground up using publicly documented API specifications and common patterns in AI-assisted development. Each implementation is its own application with independent architecture decisions and language-idiomatic designs.
 
 Python was the natural choice for accessibility -- with async/await, match/case, and modern type hints, it delivers a clean implementation that's easy to read, extend, and contribute to. ccx-py is a full working implementation with real async tool execution, Textual TUI, and an agent system -- not just a metadata wrapper.
 
@@ -62,7 +62,7 @@ ccx ask "Hello"   # One-shot
 
 ## Architecture
 
-Inspired by architecture analysis of Claude Code:
+Based on publicly documented patterns in AI coding assistant architecture:
 
 - **Tool System**: Async tools with risk classification and concurrent execution
 - **Agent Spawning**: asyncio.create_task with structured concurrency

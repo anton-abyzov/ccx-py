@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "ccx-py"
 version = "0.1.0"
-description = "CCX Python: AI coding assistant CLI. Clean-room implementation."
+description = "Community Code Extended (Python): AI coding assistant CLI."
 requires-python = ">=3.11"
 license = "MIT"
 dependencies = [

@@ -2,7 +2,7 @@
 
 ## Overview
 
-ccx-py is a Python implementation of an AI coding assistant CLI, providing a working terminal-based interface for interacting with Claude through tool use, agent spawning, and context management.
+ccx-py is the Python implementation of CCX (Community Code Extended), providing a working terminal-based AI coding assistant CLI with tool execution, agent spawning, and context management.
 
 ## Phase 1: Foundation (Current)
 
